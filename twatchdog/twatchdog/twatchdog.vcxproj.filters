@@ -1,0 +1,69 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source files">
+      <UniqueIdentifier>{c5169b47-5c6b-419b-b734-4c2b46603db5}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header files">
+      <UniqueIdentifier>{c83f2b59-a3db-4724-af1d-065096472e9c}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource files">
+      <UniqueIdentifier>{f8ca3089-7984-470b-8247-18bef09add28}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav</Extensions>
+    </Filter>
+    <Filter Include="Make files">
+      <UniqueIdentifier>{cdf9cab0-10ca-4476-8c19-aba817ba30d9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="VisualGDB settings">
+      <UniqueIdentifier>{7a19fd64-b32b-453a-8d55-21a5459dd438}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="debug.mak">
+      <Filter>Make files</Filter>
+    </None>
+    <None Include="release.mak">
+      <Filter>Make files</Filter>
+    </None>
+    <None Include="twatchdog-Debug.vgdbsettings">
+      <Filter>VisualGDB settings</Filter>
+    </None>
+    <None Include="twatchdog-Release.vgdbsettings">
+      <Filter>VisualGDB settings</Filter>
+    </None>
+    <ClCompile Include="get_equipment_information.cpp">
+      <Filter>Source files</Filter>
+    </ClCompile>
+    <ClCompile Include="key_checker.cpp">
+      <Filter>Source files</Filter>
+    </ClCompile>
+    <ClCompile Include="md5.cpp">
+      <Filter>Source files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Makefile" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="greeencrypt.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
+    <ClInclude Include="linuxhard.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
+    <ClInclude Include="md5.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
+    <ClInclude Include="rc4.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
+    <ClInclude Include="base64codes.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
+    <ClInclude Include="str_hex.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
