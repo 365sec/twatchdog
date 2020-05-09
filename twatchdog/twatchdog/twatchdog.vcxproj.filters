@@ -33,9 +33,6 @@
     <None Include="twatchdog-Release.vgdbsettings">
       <Filter>VisualGDB settings</Filter>
     </None>
-    <ClCompile Include="get_equipment_information.cpp">
-      <Filter>Source files</Filter>
-    </ClCompile>
     <ClCompile Include="key_checker.cpp">
       <Filter>Source files</Filter>
     </ClCompile>

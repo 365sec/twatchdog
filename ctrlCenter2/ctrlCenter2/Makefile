@@ -5,7 +5,7 @@
 
 #VisualGDB: AutoSourceFiles		#<--- remove this line to disable auto-updating of SOURCEFILES and EXTERNAL_LIBS
 
-TARGETNAME := twatchdog
+TARGETNAME := ctrlCenter2
 #TARGETTYPE can be APP, STATIC or SHARED
 TARGETTYPE := APP
 
@@ -36,7 +36,7 @@ error:
 	$(error Invalid configuration, please check your inputs)
 endif
 
-SOURCEFILES := key_checker.cpp md5.cpp
+SOURCEFILES :=
 EXTERNAL_LIBS := 
 EXTERNAL_LIBS_COPIED := $(foreach lib, $(EXTERNAL_LIBS),$(BINARYDIR)/$(notdir $(lib)))
 

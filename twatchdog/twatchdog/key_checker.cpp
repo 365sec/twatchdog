@@ -34,6 +34,7 @@ time : 2019 : 9 : 13
 #include <unistd.h>
 #include <dirent.h>
 #include <time.h>
+#include <sys/select.h>
 #include "greeencrypt.h"
 #include "md5.h"
 using namespace std;
@@ -99,7 +100,7 @@ void device_reader()
 	}
 	if (get_cpu_id(temp_device->cpu_id) != 1)
 	{
-		perror("cpu_id read failed!");	
+		perror("cpu_id read failed!");
 		exit(EXIT_FAILURE);
 	}
 	if (get_mac_address(temp_device->mac_address) != 1)
@@ -132,91 +133,94 @@ int expire_time_parse(char *srcfilename,int mode)
 	char  buff[4096];
 	unsigned char s[256] = { 0 };
 	char result[50] = { 0 };
+	
 	memset(s, 0, sizeof(s));
-	//memset(lict, 0, sizeof(struct license_t));
 	memset(buff, 0, sizeof(buff));
 	pthread_rwlock_wrlock(&frwlock);
 	FILE* fp = fopen(srcfilename, "rb");
-	if (fp != NULL)
+	if (fp == NULL)
 	{
-		int nread = fread(buff, 1, sizeof(buff), fp);
-		fclose(fp);
 		pthread_rwlock_unlock(&frwlock);
-		if (nread > 0)
-		{
-			char strenc[200] = { 0 };
-			int strenc_len = base64_decode(buff, (unsigned char *)strenc);
-			//ndec = strlen(strenc);
-			if(strenc_len > 1024)
-			{
-				return -2;
-			}
-			memset(buff, 0, sizeof(buff));
-			memcpy(buff, strenc, strenc_len);
-			rc4_init(s, (unsigned char *)device_encode, sizeof(device_encode));           //已经完成了初始化
-			rc4_crypt(s, (unsigned char *)buff, strenc_len);         //加密
+		return -1;
+	}
 
-			if(buff[0] != '<' || buff[1] != '?' || buff[2] != 'x' || buff[3] != 'm' || buff[4] != 'l')
+	int nread = fread(buff, 1, sizeof(buff), fp);
+	fclose(fp);
+	pthread_rwlock_unlock(&frwlock);
+	
+	if (nread > 0)
+	{
+		char strenc[200] = { 0 };
+		int strenc_len = base64_decode(buff, (unsigned char *)strenc);
+		if(strenc_len > 1024)
+		{
+			return -2;
+		}
+		memset(buff, 0, sizeof(buff));
+		memcpy(buff, strenc, strenc_len);
+		rc4_init(s, (unsigned char *)device_encode, sizeof(device_encode));           //已经完成了初始化
+		rc4_crypt(s, (unsigned char *)buff, strenc_len);         //加密
+
+		if(buff[0] != '<' || buff[1] != '?' || buff[2] != 'x' || buff[3] != 'm' || buff[4] != 'l')
+		{
+			return -1;
+		}
+		
+		char* pstart = strstr(buff, "expire=\"");
+		if (pstart != NULL)
+		{
+			memcpy(result, pstart + 8, 10);
+			if (mode == 1)
 			{
-				return -1;
-			}
-			char* pstart = strstr(buff, "expire=\"");
-			if (pstart != NULL)
-			{
-				memcpy(result, pstart + 8, 10);
-				if (mode == 1)
+				time_t t;	
+				time_t rawtime;	
+				struct tm * timeinfo;	
+				char nowtime[128];
+				
+				time(&rawtime);	
+				timeinfo = localtime(&rawtime);	
+				strftime(nowtime, sizeof(nowtime), "%Y-%m-%d", timeinfo);
+				if (strcmp(result, nowtime) > 0 && strcmp(result, expire_time->expire) > 0)
 				{
-					time_t t;	
-					time_t rawtime;	
-					struct tm * timeinfo;	
-					char nowtime[128];	
-					time(&rawtime);	
-					timeinfo = localtime(&rawtime);	
-					strftime(nowtime, sizeof(nowtime), "%Y-%m-%d", timeinfo);
-					if (strcmp(result, nowtime) > 0 && strcmp(result, expire_time->expire) > 0)
-					{
-						char license_cp_cmd[50];
-						pthread_rwlock_wrlock(&frwlock);
-						sprintf(license_cp_cmd, "cp -rf %s %s", srcfilename, "/td01/license.lic");
-						system(license_cp_cmd);
-						pthread_rwlock_unlock(&frwlock);
-						pthread_rwlock_wrlock(&rwlock);
-						memcpy(expire_time->expire, result, sizeof(result));
-						pthread_rwlock_unlock(&rwlock);
-						return 1;
-					}
-				}
-				else if (mode == 0)
-				{
+					char license_cp_cmd[50];
+					pthread_rwlock_wrlock(&frwlock);
+					sprintf(license_cp_cmd, "cp -rf %s %s", srcfilename, "/td01/license.lic");
+					system(license_cp_cmd);
+					pthread_rwlock_unlock(&frwlock);
+						
 					pthread_rwlock_wrlock(&rwlock);
 					memcpy(expire_time->expire, result, sizeof(result));
 					pthread_rwlock_unlock(&rwlock);
 					return 1;
 				}
-				else
-				{
-					return -1;
-				}
+			}
+			else if (mode == 0)
+			{
+				pthread_rwlock_wrlock(&rwlock);
+				memcpy(expire_time->expire, result, sizeof(result));
+				pthread_rwlock_unlock(&rwlock);
+				return 1;
 			}
 			else
 			{
 				return -1;
 			}
 		}
+		else
+		{
+			return -1;
+		}
 	}
-	else
-	{
-	pthread_rwlock_unlock(&frwlock);
-	}
-
 }
 
 void *expire_time_loop(void *arg)
 {
+	int i = 0;
 	while (1)
 	{
 		expire_time_parse("/td01/license.lic",0);
-		sleep(5 * 60 * 100);
+		//printf("-------->read i :%d\n", i++);
+		sleep(5*60);
 	}
 }
 
@@ -289,49 +293,106 @@ void str_hex(unsigned char *str, unsigned char *hex)
 	}
 }
 
+void set_unblock(int s)
+{
+	if (fcntl(s, F_SETFL, fcntl(s, F_GETFL) & ~O_NONBLOCK) == -1)
+	{
+		printf("set sockfd nonblock -1, errno=%d\n", errno); 	//fcntl返回-1表示失败
+	}
+}
+
+
+int socket_recvable(int s)
+{
+	fd_set fds_read;  
+	struct timeval timeout = { 6, 0 }; //select等待3秒，3秒轮询，要非阻塞就置0  
+	FD_ZERO(&fds_read);      //每次循环都要清空集合，否则不能检测描述符变化  
+    FD_SET(s, &fds_read);     //添加描述符  
+	
+	switch(select(s + 1, &fds_read, NULL, NULL, &timeout))   //select使用  
+	{  
+	case -1:
+		return -2;
+	case 0:
+		return -1; //超时，走人
+	 default :
+		return 0;
+	}
+}
+
+int socket_writeable(int s)
+{
+	fd_set fds_write;  
+	struct timeval timeout = { 6, 0 }; //select等待3秒，3秒轮询，要非阻塞就置0  
+	FD_ZERO(&fds_write);   //每次循环都要清空集合，否则不能检测描述符变化  
+    FD_SET(s, &fds_write);   //添加描述符  
+	
+	switch(select(s + 1, NULL, &fds_write, NULL, &timeout))   //select使用  
+	{  
+		case -1:
+			return -2;
+	    case 0:
+		   return -1; //超时，走人
+	    default :
+		   return 0;
+	}
+}
+
+
 void* socket_message(void* prama)	
 {	
 	struct package message;	
 	int connfd, nbuf;	
-	char buf[BUF_SIZE + 1];	
+	char buf[BUF_SIZE];	
+	
 	conn_thread_t *p = (conn_thread_t *)prama;	
-	connfd = p->connfd;	
 	unsigned char s[256] = { 0 };	
 	unsigned char st[256] = { 0 };	
 	time_t t;	
 	time_t rawtime;	
 	struct tm * timeinfo;	
 	char key[128];	
+	
 	time(&rawtime);	
 	timeinfo = localtime(&rawtime);	
 	memset(buf, 0, sizeof(buf));	
 	nbuf = 0;	
+	connfd = p->connfd;	
+
 	//receive message'head	
-	int nrecv = 0;	
+	int nrecv = 0;
+	set_unblock(connfd);
 	while (nrecv < sizeof(message.hdr))	
 	{	
 		memset(&message, 0, sizeof(message));	
+		//判断是否可读
+		if(socket_recvable(connfd) !=  0)
+		{
+			close(connfd);
+			return 0;
+		}
 		nbuf = recv(connfd, buf + nrecv, sizeof(message.hdr) - nrecv, 0);	
-		if (nbuf < 0) {	
-			printf("have error!\n");	
-			close(connfd);	
-			return 0;	
-		}	
+		if (nbuf <= 0)
+		{
+			close(connfd);
+			return 0;
+		}
 		nrecv = nrecv + nbuf;	
 	}	
 	message.hdr = *((struct package_hdr*)buf);	
 	int rev_type = message.hdr.type;
-	if (message.hdr.length <= 0)	
+	if (message.hdr.length <= 0 || message.hdr.length >= BUF_SIZE)	
 	{	
 		close(connfd);	
 		return 0;	
 	}	
-	nbuf = 0;	
+
 	int datasize = message.hdr.length - sizeof(message.hdr);
-	char *packet_buff = (char*)malloc(datasize);
 	//receive message'data	
 	int revdata = 0;	
 	nrecv = 0;
+	nbuf = 0;	
+	memset(buf, 0, sizeof(buf));
 	if (rev_type == 0)
 	{
 		strftime(key, sizeof(key), "%Y%m%d%H", timeinfo);
@@ -340,20 +401,27 @@ void* socket_message(void* prama)
 	{
 		strcpy(key, "www.365sec.com");
 	}
+	
 	while (nbuf < datasize - nrecv)	
-	{	 
-		nbuf = recv(connfd, packet_buff + nrecv, datasize - nrecv, 0);	
-		if (nbuf < 0) {	
-			printf("have error!\n");	
+	{	//判断是否可读 
+		if(socket_recvable(connfd) !=  0)
+		{
+			close(connfd);
+			return 0;
+		}
+		nbuf = recv(connfd, buf + nrecv, datasize - nrecv, 0);	
+		if (nbuf < 0) {
 			close(connfd);	
 			return 0;
 		}
 		nrecv = nrecv + nbuf;
 	}
-	packet_buff[datasize] = '\0';	
+	buf[datasize] = '\0';	
 	//let buf assign to struct'data	
-	message.data = (unsigned char *)packet_buff;
+	message.data = (unsigned char *)buf;
+	
 	unsigned char recv_data[1024];
+	memset(recv_data, 0, sizeof(recv_data));
 	if(strlen((char*)message.data) > 0)
 	{	
 		//data 16string->string	
@@ -362,6 +430,7 @@ void* socket_message(void* prama)
 		rc4_init(st, (unsigned char *)key, strlen(key));	
 		rc4_crypt(st, recv_data, strlen((char*)(recv_data)));	
 	}
+	
 	Json::Value tdkey;
 	char message_r[4096];
 	memset(message_r, 0, sizeof(message_r));
@@ -399,36 +468,60 @@ void* socket_message(void* prama)
 		tdkey["key"] = message_r;
 		tdkey["state"] = 1;
 	}
+	
 	struct package remessage;	
-	char message_r16[1024] = { 0 };	
+	char message_r16[1024];	
 	std::string DevStr = tdkey.toStyledString();	
-	//rc4 encryption	
-	//cout << DevStr << endl;
+
+	memset(message_r16, 0, sizeof(message_r16));
 	rc4_init(s, (unsigned char *)key, strlen(key));	
 	rc4_crypt(s, (unsigned char *)&DevStr[0], DevStr.length());	
 	Hex2Str(DevStr.c_str(), message_r16, DevStr.length());	
+	
 	remessage.hdr.length = 8 + strlen(message_r16);	
 	remessage.hdr.type = 1;	
 	remessage.data = (unsigned char *)message_r16;
-	//memcpy struct->buf	
+
 	char* buf_r = (char*)malloc(sizeof(remessage.hdr) + strlen((char*)remessage.data));	
-	memcpy(buf_r, &remessage, sizeof(remessage.hdr));	
-	memcpy(buf_r + sizeof(remessage.hdr), remessage.data, strlen((char*)remessage.data));	
-	int nsend = 0;	
+	memset(buf_r, 0, sizeof(buf_r));
+	memcpy(buf_r, &remessage, sizeof(remessage.hdr));
+	memcpy(buf_r + sizeof(remessage.hdr), remessage.data, strlen((char*)remessage.data));
+	int nsend = 0;
+	
 	while (nsend < remessage.hdr.length)	
 	{	
+		//判断是否可写
+		if(socket_writeable(connfd) != 0)
+		{
+			free(buf_r);
+			close(connfd);
+			if (prama != NULL)	
+			{	
+				free(prama);
+			}
+			return 0;
+		}
 		int n = send(connfd, buf_r, remessage.hdr.length, 0);	
-		if (n < 0)	
+		if (n <= 0)	
 		{	
-			break;	
+			free(buf_r);
+			close(connfd);	
+			if (prama != NULL)	
+			{	
+				free(prama);
+			}	
+			return 0;
 		}	
 		nsend += n;	
-	}	
+	}
+	free(buf_r);
 	close(connfd);	
 	if (prama != NULL)	
 	{	
+		printf("pidfree:%d\n", p->connfd);
 		free(prama);	
-	}	
+	}
+	return 0;
 }
 
 int main() {	
@@ -443,7 +536,12 @@ int main() {
 		perror("socket");	
 		exit(EXIT_FAILURE);	
 	}	
-	
+	/*
+	if (fcntl(listenfd, F_SETFL, fcntl(listenfd, F_GETFL) & ~O_NONBLOCK) == -1)
+	{
+		printf( "set sockfd nonblock -1, errno=%d\n", errno);	//fcntl返回-1表示失败
+		return 0;
+	}*/
 	struct sockaddr_un servaddr;	
 	memset(&servaddr, 0, sizeof(servaddr));	
 	servaddr.sun_family = AF_UNIX;	
@@ -461,19 +559,29 @@ int main() {
 		exit(EXIT_FAILURE);	
 	}
 	pthread_t write_id;
-	pthread_rwlock_init(&rwlock, NULL);
-	pthread_rwlock_init(&frwlock, NULL);
+	//pthread_rwlock_init(&rwlock, NULL);
+	//pthread_rwlock_init(&frwlock, NULL);
 	device_reader();
 	pthread_create(&write_id, NULL, expire_time_loop, NULL);
 	for (;;) {	
 		int connfd;	
-		if ((connfd = accept(listenfd, NULL, NULL)) < 0) {	
-			perror("accept");	
-			return 0;	
-		}	
+		if ((connfd = accept(listenfd, NULL, NULL)) < 0) 
+			{
+				/*
+				if (errno == EWOULDBLOCK)
+				{
+					continue;	//表示没有读到数据
+				}
+				else {
+					printf("read error!");  	//表示读取失败
+					continue;
+				}*/
+				continue;
+			}
 		conn_thread_t *p = (conn_thread_t*)malloc(sizeof(conn_thread_t));	
 		pthread_t pthread_id;
-		p->connfd = connfd;	
+		p->connfd = connfd;
+		printf("pidcreat:%d\n", p->connfd);
 		int rc = pthread_create(&pthread_id, 0, socket_message, (void*)p);
 	} 
 	return 0;
